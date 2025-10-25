@@ -333,6 +333,7 @@ def correct_images(
     delete_original,
     exiftool_path,
     uint16_output,
+    max_workers,
 ):
     """
     Radiometrically correct images.
@@ -363,7 +364,7 @@ def correct_images(
         if not os.path.exists(output_path):
             os.mkdir(output_path)
         thermal_convert.convert_thermal(
-            lwir_folder_path, lwir_output_path, exiftool_path
+            lwir_folder_path, lwir_output_path, exiftool_path, max_workers=max_workers
         )
 
     if not lwir_only:
@@ -400,8 +401,8 @@ def correct_images(
             # Copy EXIF:
             logger.info("Writing EXIF data...")
             # progress_apply is tqdm version of apply
-            image_df.progress_apply(
-                lambda row: metadata.copy_exif(row, exiftool_path), axis=1
+            metadata.copy_exif_parallel_apply(
+                image_df, exiftool_path, max_workers=max_workers
             )
 
             # Delete input imagery if requested:

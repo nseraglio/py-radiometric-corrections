@@ -76,6 +76,14 @@ if __name__ == "__main__":
         help="If selected, scale of output values will be adjusted to 0-65535 and dtype will be "
         "changed to uint16.",
     )
+    parser.add_argument(
+        "--max_workers",
+        "-w",
+        type=int,
+        default=1,
+        help="Number of parallel workers for EXIF metadata copying. Default is 1 (sequential). "
+        "Increase for faster processing on multi-core systems (e.g., 4 or 8).",
+    )
 
     parser.add_argument(
         "--version",

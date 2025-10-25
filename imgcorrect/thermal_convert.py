@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 
 import imageio
 import numpy as np
@@ -17,7 +18,7 @@ from imgcorrect.io import TqdmToLogger
 logger = logging.getLogger(__name__)
 
 
-def convert_thermal(input_path, output_path, exiftool_path):
+def convert_thermal(input_path, output_path, exiftool_path, max_workers):
     """Convert 6x thermal."""
     if not os.path.exists(output_path):
         os.mkdir(output_path)
@@ -31,10 +32,10 @@ def convert_thermal(input_path, output_path, exiftool_path):
     ]
 
     logger.info("Converting LWIR images from CentiKelvin(uint16) to Celsius(float32)")
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # copy image to output location
-        for image in tqdm(images, unit="image", file=TqdmToLogger(logger)):
-
+    
+    def process_image(image):
+        """Process a single thermal image."""
+        with tempfile.TemporaryDirectory() as temp_dir:
             if "CAL" not in image:
                 # Copy image to temporary directory
                 output_image_path = os.path.join(temp_dir, image)
@@ -95,3 +96,6 @@ def convert_thermal(input_path, output_path, exiftool_path):
             else:
                 if overwrite:
                     os.remove(os.path.join(output_path, image))
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        list(tqdm(executor.map(process_image, images), total=len(images), unit="image", file=TqdmToLogger(logger)))

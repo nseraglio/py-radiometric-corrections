@@ -2,10 +2,30 @@
 
 import logging
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
 from imgparse import MetadataParser
 
 logger = logging.getLogger(__name__)
+
+
+def copy_exif_parallel_apply(image_df, exiftool_path, max_workers):
+    """Copy EXIF metadata in parallel with progress bar."""
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    futures = {}
+    
+    for idx, (_, row) in enumerate(image_df.iterrows()):
+        future = executor.submit(copy_exif, row, exiftool_path)
+        futures[idx] = future
+    
+    def _wait_for_result(row):
+        idx = row.name if hasattr(row, 'name') else 0
+        if idx in futures:
+            futures[idx].result()
+        return row
+    
+    image_df.progress_apply(_wait_for_result, axis=1)
+    executor.shutdown()
 
 
 def copy_exif(image_df_row, exiftool_path):
