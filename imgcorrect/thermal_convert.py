@@ -73,9 +73,15 @@ def convert_thermal(input_path, output_path, exiftool_path, max_workers):
                 if hasattr(subprocess, "CREATE_NO_WINDOW"):
                     kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
-                results = subprocess.run(command, **kwargs)
-                if results.returncode != 0:
-                    raise ValueError("Exiftool command did not run successfully.")
+                # Simple retry mechanism (3 attempts)
+                for attempt in range(3):
+                    results = subprocess.run(command, **kwargs)
+                    if results.returncode == 0:
+                        break
+                    if attempt < 2:  # Not the last attempt
+                        logger.warning(f"Exiftool retry {attempt + 1}/3 for {image}")
+                    else:
+                        raise ValueError(f"Exiftool failed for {image}: {results.stderr.decode('utf-8', errors='ignore') if results.stderr else 'unknown error'}")
 
                 # Copy output from temp directory to output directory
                 shutil.copy(output_image_path, os.path.join(output_path, image))

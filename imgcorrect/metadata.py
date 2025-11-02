@@ -64,6 +64,12 @@ def copy_exif(image_df_row, exiftool_path):
     if hasattr(subprocess, "CREATE_NO_WINDOW"):
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
-    results = subprocess.run(command, **kwargs)
-    if results.returncode != 0:
-        raise ValueError("Exiftool command did not run successfully.")
+    # Simple retry mechanism (3 attempts)
+    for attempt in range(3):
+        results = subprocess.run(command, **kwargs)
+        if results.returncode == 0:
+            break
+        if attempt < 2:  # Not the last attempt
+            logger.warning(f"Exiftool retry {attempt + 1}/3 for {image_df_row.temp_path}")
+        else:
+            raise ValueError(f"Exiftool failed for {image_df_row.temp_path}: {results.stderr.decode('utf-8', errors='ignore') if results.stderr else 'unknown error'}")
