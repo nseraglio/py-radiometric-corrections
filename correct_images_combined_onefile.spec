@@ -7,6 +7,12 @@
 # Build command (run from the project root with venv active):
 #   python -m PyInstaller correct_images_combined_onefile.spec
 
+try:
+    from PyInstaller.utils.hooks import copy_metadata
+    _imgcorrect_metadata = copy_metadata('imgcorrect')
+except Exception:
+    _imgcorrect_metadata = []
+
 a = Analysis(
     ['scripts\\correct_images_combined.py'],
     pathex=['.'],
@@ -16,6 +22,7 @@ a = Analysis(
         ('cfg/exiftool.cfg', 'cfg'),
         ('cfg/reg_config.ini', 'cfg'),
         ('sentera_radiometric_corrections_icon.ico', '.'),
+        *_imgcorrect_metadata,
     ],
     hiddenimports=['pkg_resources.py2_warn'],
     hookspath=[],

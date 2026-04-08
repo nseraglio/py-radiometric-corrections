@@ -2,4 +2,7 @@
 
 import importlib.metadata
 
-__version__ = importlib.metadata.version("imgcorrect")
+try:
+    __version__ = importlib.metadata.version("imgcorrect")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "unknown"
