@@ -144,6 +144,18 @@ class CorrectImagesApp(tk.Tk):
         )
         self.uint16_checkbutton.grid(row=row, column=0, sticky="w", padx=15)
 
+        self.max_workers_var = tk.StringVar(value="1")
+        self.max_workers_label = tk.Label(self, text="Max Workers")
+        self.max_workers_label.grid(row=row, column=1, sticky="w", padx=15)
+        self.max_workers_spinbox = tk.Spinbox(
+            self,
+            from_=1,
+            to=128,
+            width=8,
+            textvariable=self.max_workers_var,
+        )
+        self.max_workers_spinbox.grid(row=row, column=2, sticky="w", padx=(0, 5))
+
         self.toggle_advanced_options()
 
         row += 1
@@ -176,6 +188,8 @@ class CorrectImagesApp(tk.Tk):
             self.exiftool_entry,
             self.exiftool_path_browse_button,
             self.uint16_checkbutton,
+            self.max_workers_label,
+            self.max_workers_spinbox,
         ]
         if not self.advanced_options.get():
             for widget in widgets:
@@ -252,6 +266,14 @@ class CorrectImagesApp(tk.Tk):
         no_reflectance_correct = not self.reflectance_var.get()
         all_panels = self.all_panels_var.get()
         delete_original = self.delete_original_var.get()
+        try:
+            max_workers = int(self.max_workers_var.get())
+            if max_workers < 1:
+                raise ValueError
+        except (ValueError, tk.TclError):
+            messagebox.showerror("Error", "Max workers must be an integer greater than 0.")
+            self.enable_buttons()
+            return
 
         if self.exiftool_path_var.get():
             exiftool_path = self.exiftool_path_var.get()
@@ -294,6 +316,7 @@ class CorrectImagesApp(tk.Tk):
             logger.info(f"All Panels: {all_panels}")
             logger.info(f"Delete Original: {delete_original}")
             logger.info(f"UInt16 Output: {uint16_output}")
+            logger.info(f"Max Workers: {max_workers}")
             try:
                 corrections.correct_images(
                     input_path,
@@ -305,6 +328,7 @@ class CorrectImagesApp(tk.Tk):
                     delete_original,
                     exiftool_path,
                     uint16_output,
+                    max_workers,
                 )
                 logger.info("Corrections complete!")
             except Exception as e:

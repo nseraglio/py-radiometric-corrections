@@ -1,0 +1,49 @@
+name: Build Windows Executable
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ImageryCorrector.exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry==2.1.2
+          poetry config virtualenvs.create false
+          poetry install --without dev
+          pip install pyinstaller
+
+      - name: Build executable
+        run: python -m PyInstaller correct_images_combined_onefile.spec --noconfirm
+
+      - name: Upload executable to release
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: dist/ImageryCorrector.exe
+          asset_name: ImageryCorrector.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload executable as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImageryCorrector
+          path: dist/ImageryCorrector.exe
+          retention-days: 30

@@ -1,0 +1,487 @@
+"""Sentera Radiometric Corrections - combined CLI / GUI entry point.
+
+Behaviour
+---------
+- Launched from a terminal **with arguments**  →  CLI mode (same interface as
+  correct_images.py, full console output).
+- Launched by **double-clicking** (no arguments) →  GUI mode (console window
+  is hidden, tkinter interface opens).
+"""
+
+import sys
+
+
+def _is_cli_mode() -> bool:
+    """Return True when the user passed at least one argument."""
+    return len(sys.argv) > 1
+
+
+def _hide_console() -> None:
+    """Hide the Windows console window so the GUI launches cleanly."""
+    if sys.platform == "win32":
+        import ctypes
+
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE = 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CLI mode
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _run_cli() -> None:
+    import argparse
+    import logging
+    import os
+
+    from imgcorrect import corrections
+    from imgcorrect._version import __version__
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger()
+
+    parser = argparse.ArgumentParser(
+        description="Radiometric corrections for Sentera sensors."
+    )
+    parser.add_argument(
+        "input_path",
+        help="Path to image files from supported sensors. Provide a folder "
+        "containing single-page files in their respective sub-folders.",
+    )
+    parser.add_argument(
+        "--calibration_id",
+        "-c",
+        default="CAL",
+        help='Calibration image identifier in the file name. Defaults to "CAL".',
+    )
+    parser.add_argument(
+        "--output_path",
+        "-o",
+        default=None,
+        help="Output folder path. Defaults to the input directory.",
+    )
+    parser.add_argument(
+        "--no_ils_correct",
+        "-i",
+        action="store_true",
+        help="Skip ILS correction.",
+    )
+    parser.add_argument(
+        "--no_reflectance_correct",
+        "-r",
+        action="store_true",
+        help="Skip reflectance correction.",
+    )
+    parser.add_argument(
+        "--all_panels",
+        "-a",
+        action="store_true",
+        help="Use all panel sets for reflectance correction (6X).",
+    )
+    parser.add_argument(
+        "--delete_original",
+        "-d",
+        action="store_true",
+        help="Overwrite original images with corrected versions.",
+    )
+    parser.add_argument(
+        "--exiftool_path",
+        "-e",
+        default=None,
+        help="Path to ExifTool executable. Defaults to the bundled version.",
+    )
+    parser.add_argument(
+        "--uint16_output",
+        "-u",
+        action="store_true",
+        help="Output as UInt16 (0-65535) instead of Float32 (0-1).",
+    )
+    parser.add_argument(
+        "--max_workers",
+        "-w",
+        type=int,
+        default=1,
+        help="Parallel workers for EXIF metadata copying. Default: 1.",
+    )
+    parser.add_argument(
+        "--version",
+        "-v",
+        action="version",
+        version=f"%(prog)s v{__version__}",
+    )
+
+    args = parser.parse_args()
+
+    if not args.exiftool_path:
+        if getattr(sys, "frozen", False):
+            args.exiftool_path = os.path.join(sys._MEIPASS, "exiftool.exe")
+        else:
+            args.exiftool_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "exiftool",
+                "exiftool.exe",
+            )
+        logger.info("Using bundled ExifTool: %s", args.exiftool_path)
+
+    corrections.correct_images(**vars(args))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GUI mode
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _run_gui() -> None:
+    import logging
+    import os
+    import threading
+    import tkinter as tk
+    from tkinter import filedialog, messagebox
+
+    from imgcorrect import corrections
+    from imgcorrect._version import __version__ as imgcorrect_version
+
+    logger = logging.getLogger(__name__)
+
+    class TextHandler(logging.Handler):
+        def __init__(self, text_widget):
+            super().__init__()
+            self.text_widget = text_widget
+
+        def emit(self, record):
+            msg = self.format(record)
+            last_line_index = self.text_widget.index("end-2l")
+            last_line_text = self.text_widget.get(last_line_index, "end-1c").strip()
+            if last_line_text and last_line_text[0].isdigit():
+                self.text_widget.after(
+                    0, self.text_widget.delete, last_line_index, "end-1c"
+                )
+                self.text_widget.after(0, self.text_widget.insert, tk.END, msg + "\n")
+            else:
+                self.text_widget.after(0, self.text_widget.insert, tk.END, msg + "\n")
+            self.text_widget.after(0, self.text_widget.see, tk.END)
+
+    class CorrectImagesApp(tk.Tk):
+        def __init__(self):
+            super().__init__()
+            self.title(f"Sentera Radiometric Corrections v{imgcorrect_version}")
+            self.geometry("600x500")
+            self.resizable(True, False)
+            self.minsize(600, 500)
+            try:
+                self.iconbitmap(
+                    os.path.join(
+                        sys._MEIPASS, "sentera_radiometric_corrections_icon.ico"
+                    )
+                )
+            except Exception:
+                try:
+                    self.iconbitmap("sentera_radiometric_corrections_icon.ico")
+                except Exception:
+                    pass
+            self.create_widgets()
+            self.grid_columnconfigure(1, weight=1)
+            self.grid_rowconfigure(10, weight=1)
+
+        def create_widgets(self):
+            row = 0
+            tk.Label(self, text="Input Path").grid(
+                row=row, column=0, sticky="w", padx=(15, 0)
+            )
+            self.input_path_var = tk.StringVar()
+            tk.Entry(self, textvariable=self.input_path_var, width=90).grid(
+                row=row, column=1, sticky="ew"
+            )
+            self.browse_input_button = tk.Button(
+                self, text="Browse", command=self.browse_input
+            )
+            self.browse_input_button.grid(row=row, column=2, sticky="ew", padx=(0, 5))
+            row += 1
+
+            tk.Label(self, text="Output Path").grid(
+                row=row, column=0, sticky="w", padx=(15, 0)
+            )
+            self.output_path_var = tk.StringVar()
+            self.output_path_text = tk.Entry(
+                self, textvariable=self.output_path_var, width=90
+            )
+            self.output_path_text.grid(row=row, column=1, sticky="ew")
+            self.browse_output_button = tk.Button(
+                self, text="Browse", command=self.browse_output
+            )
+            self.browse_output_button.grid(row=row, column=2, sticky="w", padx=(0, 5))
+            row += 1
+
+            self.reflectance_var = tk.BooleanVar(value=True)
+            tk.Checkbutton(
+                self, text="Reflectance Correction", variable=self.reflectance_var
+            ).grid(row=row, column=0, sticky="w", padx=15)
+
+            self.ils_var = tk.BooleanVar(value=False)
+            tk.Checkbutton(self, text="ILS Correction", variable=self.ils_var).grid(
+                row=row, column=1, sticky="w", padx=15
+            )
+            row += 1
+
+            self.advanced_options = tk.BooleanVar()
+            tk.Checkbutton(
+                self,
+                text="Advanced Options",
+                variable=self.advanced_options,
+                command=self.toggle_advanced_options,
+            ).grid(row=row, column=0, sticky="w", padx=15)
+            row += 1
+
+            self.exiftool_path_var = tk.StringVar()
+            self.exiftool_path_label = tk.Label(self, text="ExifTool Path (optional)")
+            self.exiftool_path_label.grid(row=row, column=0, sticky="w", padx=(15, 0))
+            self.exiftool_entry = tk.Entry(
+                self, textvariable=self.exiftool_path_var, width=90
+            )
+            self.exiftool_entry.grid(row=row, column=1, sticky="ew")
+            self.exiftool_path_browse_button = tk.Button(
+                self, text="Browse", command=self.browse_exiftool
+            )
+            self.exiftool_path_browse_button.grid(row=row, column=2, padx=(0, 5))
+            row += 1
+
+            self.calibration_id_var = tk.StringVar(value="CAL")
+            self.cal_id_label = tk.Label(self, text="Calibration ID")
+            self.cal_id_label.grid(row=row, column=0, sticky="w", padx=15)
+            self.cal_id_entry = tk.Entry(self, textvariable=self.calibration_id_var)
+            self.cal_id_entry.grid(row=row, column=1, sticky="w")
+            row += 1
+
+            self.all_panels_var = tk.BooleanVar()
+            self.all_panels_checkbutton = tk.Checkbutton(
+                self,
+                text="Use All Panel Sets (6X)",
+                variable=self.all_panels_var,
+            )
+            self.all_panels_checkbutton.grid(row=row, column=0, sticky="w", padx=15)
+            row += 1
+
+            self.delete_original_var = tk.BooleanVar()
+            self.delete_overwrite_checkbutton = tk.Checkbutton(
+                self,
+                text="Delete/Overwrite Original",
+                variable=self.delete_original_var,
+                command=self.toggle_overwrite,
+            )
+            self.delete_overwrite_checkbutton.grid(
+                row=row, column=0, sticky="w", padx=15
+            )
+            row += 1
+
+            self.uint16_var = tk.BooleanVar()
+            self.uint16_checkbutton = tk.Checkbutton(
+                self, text="Output as UInt16 (0-65535)", variable=self.uint16_var
+            )
+            self.uint16_checkbutton.grid(row=row, column=0, sticky="w", padx=15)
+
+            self.max_workers_var = tk.StringVar(value="1")
+            self.max_workers_label = tk.Label(self, text="Max Workers")
+            self.max_workers_label.grid(row=row, column=1, sticky="w", padx=15)
+            self.max_workers_spinbox = tk.Spinbox(
+                self,
+                from_=1,
+                to=128,
+                width=8,
+                textvariable=self.max_workers_var,
+            )
+            self.max_workers_spinbox.grid(row=row, column=2, sticky="w", padx=(0, 5))
+
+            self.toggle_advanced_options()
+            row += 1
+
+            self.run_button = tk.Button(
+                self,
+                text="Run Correction",
+                command=self.run_correction,
+                bg="green",
+                fg="white",
+                width=70,
+            )
+            self.run_button.grid(row=row, column=0, columnspan=3, pady=20)
+            row += 1
+
+            self.output_text = tk.Text(self, height=10, width=70)
+            self.output_text.grid(
+                row=row,
+                column=0,
+                sticky="nsew",
+                columnspan=3,
+                padx=(15, 15),
+                pady=(0, 15),
+            )
+
+        def toggle_advanced_options(self):
+            widgets = [
+                self.cal_id_label,
+                self.cal_id_entry,
+                self.all_panels_checkbutton,
+                self.delete_overwrite_checkbutton,
+                self.exiftool_path_label,
+                self.exiftool_entry,
+                self.exiftool_path_browse_button,
+                self.uint16_checkbutton,
+                self.max_workers_label,
+                self.max_workers_spinbox,
+            ]
+            if not self.advanced_options.get():
+                for widget in widgets:
+                    widget.grid_remove()
+            else:
+                for widget in widgets:
+                    widget.grid()
+
+        def toggle_overwrite(self):
+            if self.delete_original_var.get():
+                self.output_path_var.set(self.input_path_var.get())
+                self.browse_output_button["state"] = "disabled"
+                self.output_path_text["state"] = "disabled"
+            else:
+                self.browse_output_button["state"] = "normal"
+                self.output_path_text["state"] = "normal"
+
+        def browse_input(self):
+            path = filedialog.askdirectory()
+            if path:
+                self.input_path_var.set(path)
+                calibrated_path = (
+                    path.rstrip("/\\") + "-calibrated"
+                    if not self.delete_original_var.get()
+                    else path
+                )
+                self.output_path_var.set(calibrated_path)
+                entry_widget = self.nametowidget(self.children["!entry"])
+                entry_widget.icursor(tk.END)
+                entry_widget.xview_moveto(1)
+                output_entry_widget = self.nametowidget(self.children["!entry2"])
+                output_entry_widget.icursor(tk.END)
+                output_entry_widget.xview_moveto(1)
+
+        def browse_output(self):
+            path = filedialog.askdirectory()
+            if path:
+                self.output_path_var.set(path)
+                entry_widget = self.nametowidget(self.children["!entry2"])
+                entry_widget.icursor(tk.END)
+                entry_widget.xview_moveto(1)
+
+        def browse_exiftool(self):
+            path = filedialog.askopenfilename(filetypes=[("Executable", "*.exe")])
+            if path:
+                self.exiftool_path_var.set(path)
+
+        def disable_buttons(self):
+            self.run_button["state"] = "disabled"
+            self.browse_input_button["state"] = "disabled"
+            self.browse_output_button["state"] = "disabled"
+            self.exiftool_path_browse_button["state"] = "disabled"
+
+        def enable_buttons(self):
+            self.run_button["state"] = "normal"
+            self.browse_input_button["state"] = "normal"
+            self.browse_output_button["state"] = "normal"
+            self.exiftool_path_browse_button["state"] = "normal"
+
+        def run_correction(self):
+            self.disable_buttons()
+            input_path = self.input_path_var.get()
+            if not input_path:
+                messagebox.showerror("Error", "Input path is required.")
+                self.enable_buttons()
+                return
+            calibration_id = self.calibration_id_var.get()
+            output_path = self.output_path_var.get()
+            no_ils_correct = not self.ils_var.get()
+            no_reflectance_correct = not self.reflectance_var.get()
+            all_panels = self.all_panels_var.get()
+            delete_original = self.delete_original_var.get()
+            try:
+                max_workers = int(self.max_workers_var.get())
+                if max_workers < 1:
+                    raise ValueError
+            except (ValueError, tk.TclError):
+                messagebox.showerror(
+                    "Error", "Max workers must be an integer greater than 0."
+                )
+                self.enable_buttons()
+                return
+
+            if self.exiftool_path_var.get():
+                exiftool_path = self.exiftool_path_var.get()
+            else:
+                try:
+                    exiftool_path = os.path.join(sys._MEIPASS, "exiftool.exe")
+                except Exception:
+                    exiftool_path = "exiftool/exiftool.exe"
+            uint16_output = self.uint16_var.get()
+
+            self.output_text.delete(1.0, tk.END)
+            os.makedirs(self.output_path_var.get(), exist_ok=True)
+
+            def run_corrections():
+                root_logger = logging.getLogger()
+                for handler in root_logger.handlers[:]:
+                    if isinstance(handler, TextHandler):
+                        root_logger.removeHandler(handler)
+                handler = TextHandler(self.output_text)
+                logging.basicConfig(
+                    filename=os.path.join(
+                        os.path.split(output_path)[0],
+                        f"{os.path.basename(output_path)}_radiometric_corrections.log",
+                    ),
+                    level=logging.INFO,
+                    format="%(asctime)s %(levelname)s:%(message)s",
+                    force=True,
+                )
+                root_logger.addHandler(handler)
+                logger.info(f"Running Corrections - v{imgcorrect_version}")
+                logger.info(f"Input Path: {input_path}")
+                logger.info(f"Output Path: {output_path}")
+                logger.info(f"ExifTool Path: {exiftool_path}")
+                logger.info(f"Reflectance Correction: {not no_reflectance_correct}")
+                logger.info(f"ILS Correction: {not no_ils_correct}")
+                logger.info(f"Calibration ID: {calibration_id}")
+                logger.info(f"All Panels: {all_panels}")
+                logger.info(f"Delete Original: {delete_original}")
+                logger.info(f"UInt16 Output: {uint16_output}")
+                logger.info(f"Max Workers: {max_workers}")
+                try:
+                    corrections.correct_images(
+                        input_path,
+                        calibration_id,
+                        output_path,
+                        no_ils_correct,
+                        no_reflectance_correct,
+                        all_panels,
+                        delete_original,
+                        exiftool_path,
+                        uint16_output,
+                        max_workers,
+                    )
+                    logger.info("Corrections complete!")
+                except Exception as e:
+                    logger.error(f"Error during correction: {e}")
+                self.enable_buttons()
+
+            threading.Thread(target=run_corrections, daemon=True).start()
+
+    app = CorrectImagesApp()
+    app.mainloop()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Entry point
+# ─────────────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    if _is_cli_mode():
+        _run_cli()
+    else:
+        _hide_console()
+        _run_gui()
