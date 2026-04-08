@@ -271,7 +271,9 @@ class CorrectImagesApp(tk.Tk):
             if max_workers < 1:
                 raise ValueError
         except (ValueError, tk.TclError):
-            messagebox.showerror("Error", "Max workers must be an integer greater than 0.")
+            messagebox.showerror(
+                "Error", "Max workers must be an integer greater than 0."
+            )
             self.enable_buttons()
             return
 

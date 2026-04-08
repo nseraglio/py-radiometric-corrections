@@ -19,5 +19,6 @@ repos:
           'flake8-logging-format',
           'flake8-rst-docstrings',
           'pygments',
-          'pep8-naming'
+        'pep8-naming',
+        'setuptools'
       ]

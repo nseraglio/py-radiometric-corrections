@@ -81,7 +81,9 @@ def convert_thermal(input_path, output_path, exiftool_path, max_workers):
                     if attempt < 2:  # Not the last attempt
                         logger.warning(f"Exiftool retry {attempt + 1}/3 for {image}")
                     else:
-                        raise ValueError(f"Exiftool failed for {image}: {results.stderr.decode('utf-8', errors='ignore') if results.stderr else 'unknown error'}")
+                        raise ValueError(
+                            f"Exiftool failed for {image}: {results.stderr.decode('utf-8', errors='ignore') if results.stderr else 'unknown error'}"
+                        )
 
                 # Copy output from temp directory to output directory
                 shutil.copy(output_image_path, os.path.join(output_path, image))
@@ -102,6 +104,13 @@ def convert_thermal(input_path, output_path, exiftool_path, max_workers):
             else:
                 if overwrite:
                     os.remove(os.path.join(output_path, image))
-    
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        list(tqdm(executor.map(process_image, images), total=len(images), unit="image", file=TqdmToLogger(logger)))
+        list(
+            tqdm(
+                executor.map(process_image, images),
+                total=len(images),
+                unit="image",
+                file=TqdmToLogger(logger),
+            )
+        )
