@@ -19,7 +19,7 @@ def copy_exif_parallel_apply(image_df, exiftool_path, max_workers):
         futures[idx] = future
 
     def _wait_for_result(row):
-            idx = row.name if hasattr(row, "name") else 0
+        idx = row.name if hasattr(row, "name") else 0
         if idx in futures:
             futures[idx].result()
         return row

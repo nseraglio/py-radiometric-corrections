@@ -20,5 +20,5 @@ repos:
           'flake8-rst-docstrings',
           'pygments',
         'pep8-naming',
-        'setuptools'
+        'setuptools<81'
       ]
